@@ -1,68 +1,92 @@
 # 05CamLink
 
-Turn a phone into a wireless OBS camera — scenes, overlays, and **click-to-connect** pairing — as an installable, local-first PWA hosted on GitHub Pages.
+Turn a phone into a wireless OBS camera — scenes, overlays, and **scan-to-pair** —
+as an installable PWA on GitHub Pages. **Nothing to install or run anywhere.**
 
-Scenes, overlays, settings and logos are stored on-device (IndexedDB, with a localStorage fallback). The camera video never touches a server.
+Pairing uses the free public **PeerJS** broker to introduce the two devices.
+No video passes through it — the camera stream goes phone → PC peer-to-peer,
+over your LAN. The broker only carries the tiny connection handshake.
 
-> **This build uses a FLAT file layout** — every file sits at the repo root (no `lib/` or `icons/` folders). Upload all files to the root of your repo.
-
----
-
-## Deploy to GitHub Pages
-
-1. Upload **every file** in this folder to your repo root. Confirm the big one, `konva.min.js`, is actually there.
-2. Repo → **Settings → Pages** → *Deploy from a branch* → `main` / root.
-3. Open `https://USERNAME.github.io/REPO/`. (Camera needs HTTPS, which Pages provides.)
-
-The app is PWA-only: in a normal tab it shows an install gate. Add `?preview` to test in a tab.
+> **Flat layout:** every file sits at the repo root. Upload them all.
 
 ---
 
-## Pairing: how "click the phone, swipe to confirm" works
+## Step 1 — Put it on GitHub Pages
 
-Browsers can't scan the local network or accept incoming connections, so the phone and the PC each connect to one tiny **rendezvous server** that introduces them. The server only brokers the handshake — **the camera stream flows phone↔PC directly over your LAN** (WebRTC, STUN only).
+1. Create a repo (e.g. `05CamLink`).
+2. **Add file → Upload files** and drag in **every file** from this folder.
+   Double-check these big ones are in the list before committing:
+   `konva.min.js`, `peerjs.min.js`, `jsqr.min.js`.
+3. **Settings → Pages → Deploy from a branch → `main` / root → Save.**
+4. After ~1 minute, open the link Pages shows:
+   `https://USERNAME.github.io/REPO/`
 
-### 1. Run the rendezvous server (`pair-server.js`)
-
-```
-npm init -y
-npm install ws
-node pair-server.js          # listens on :8787
-```
-
-### 2. Make it reachable over `wss://` (required)
-
-The app is served from HTTPS, and a secure page may only open a *secure* WebSocket. So the server must be `wss://`, not `ws://`. Two easy ways:
-
-- Put it behind a domain you own with TLS (`https://pair.yourdomain.com` → `:8787`), then use `wss://pair.yourdomain.com`.
-- Or tunnel your local instance: `cloudflared tunnel --url http://localhost:8787` and use the `wss://…` URL it prints.
-
-Only the handshake travels through this; video stays local on your LAN.
-
-### 3. Set it up once
-
-- **Phone (in the app):** Settings → *Pairing server* = your `wss://…` URL, give the phone a name (e.g. "Noah's iPhone"), tap **Save & make discoverable**. The status pill shows **Discoverable**.
-- **PC:** open `viewer.html` (from Pages) on the OBS computer — `https://USERNAME.github.io/REPO/viewer.html`. Enter the same `wss://…` URL and a computer name. You can also pass it in the URL: `…/viewer.html?pair=wss://pair.yourdomain.com`.
-
-### 4. Connect
-
-The PC viewer lists every phone that's online. Click yours → the phone shows **"‹PC name› would like to connect"** with a **green slide-to-connect** slider → swipe → the video appears on the PC and it goes fullscreen. Add that page to OBS as a **Browser Source** (set to 1280×720 for 720p), or capture the window.
-
-A phone that opens `viewer.html` by mistake is redirected to install the app.
-
-**Manual fallback (no server):** both pages still offer copy/paste offer↔answer pairing under "Use manual pairing", in case you don't want to run the server.
+That's the whole deployment. There is no server, no Docker, no tunnel.
 
 ---
 
-## What's included
+## Step 2 — Set up the phone (the camera)
 
-- Install gate + 5-step onboarding (persisted).
-- Camera: 480/720/1080p, front/back, mirror.
-- Scenes: create/rename/delete, instant switch, auto-save, restore last, export/import JSON.
-- Overlays (Konva): text (size/color/shadow), image, GIF (best-effort animation), drag, two-finger pinch-resize + rotate, layer order, lock, delete, snap-to-center guides.
-- Configurable logo URLs (`logoImageURL`, `splashLogoImageURL`, `onboardingLogoImageURL`) with text fallback.
-- Offline: service worker precaches the shell + libs.
-- Click-to-connect pairing with slide-to-confirm, plus a manual fallback.
+1. On the phone, open `https://USERNAME.github.io/REPO/`.
+2. Choose **"This is the camera."**
+3. It asks you to install (camera + full-screen need an installed app):
+   - **iPhone:** Share → **Add to Home Screen**, then open it from the home screen.
+   - **Android:** menu ⋮ → **Install app**, then open it.
+4. First launch: allow the **camera**, give the device a **name** (e.g. "Noah's iPhone"),
+   finish setup. You land on the live camera view.
+
+---
+
+## Step 3 — Set up the computer (the receiver)
+
+1. On the OBS computer, open `https://USERNAME.github.io/REPO/viewer.html`.
+2. Choose / confirm **"Watch on this device."**
+3. Type a name (e.g. "OBS PC") → **Show QR code.** A QR appears.
+   - In OBS, add this page as a **Browser Source** (set size to 1280×720 for 720p),
+     or just keep the browser window and use a Window Capture.
+
+---
+
+## Step 4 — Pair them
+
+1. On the **phone**, open Settings (gear) → **Scan QR to connect**
+   (or tap the red button on the camera screen).
+2. Point the phone at the **QR on the computer**.
+3. A popup appears on the phone:
+   *"Connect to ‹OBS PC›? This will let ‹OBS PC› view your camera feed."*
+   **Slide the green slider** to confirm.
+4. A second or two later the video shows up on the computer. Done — you're live.
+
+Both devices need internet at this moment (to reach the broker for the handshake),
+but the **video itself flows phone → PC directly over your LAN**.
+
+---
+
+## If pairing won't connect
+
+- **"Matchmaker unreachable"** — the free PeerJS broker is occasionally busy or down.
+  Generate a new QR and retry, or use **manual pairing** (below).
+- **"That code has expired"** — the computer made a fresh QR; rescan the current one.
+- **Video connects then drops** — your Wi-Fi may use *client isolation*
+  (common on guest networks), which blocks direct device-to-device traffic.
+  Use a normal home/studio network.
+
+### Manual pairing (zero broker, zero server)
+
+Every pairing screen has a **manual** option. The phone generates an offer,
+you paste it into the receiver's manual screen, copy its answer back into the
+phone. Clunky, but it needs nothing external at all.
+
+---
+
+## Features
+
+Send/receive chooser · install gate · onboarding with device naming ·
+camera 480/720/1080p, front/back, mirror · scenes (create/rename/delete,
+instant switch, auto-save, export/import) · overlays (text, image, GIF,
+drag, pinch-resize + rotate, layers, lock, snap guides) · configurable logo
+URLs · offline service worker · scan-to-pair with slide-to-confirm + manual fallback.
 
 ## Files
-`index.html` · `viewer.html` · `app.js` · `pairing.js` · `styles.css` · `manifest.json` · `sw.js` · `pair-server.js` (optional, run with Node) · `konva.min.js` `qrcode.min.js` `gifler.min.js` · icons.
+`index.html` `viewer.html` `app.js` `pairing.js` `styles.css` `manifest.json` `sw.js` ·
+`konva.min.js` `qrcode.min.js` `gifler.min.js` `jsqr.min.js` `peerjs.min.js` · icons

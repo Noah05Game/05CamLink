@@ -23,6 +23,25 @@
   <div class="splash-tag">Wireless OBS camera</div>
 </div>
 
+<!-- ============ SEND / RECEIVE CHOOSER ============ -->
+<div id="landing" class="screen hidden">
+  <div class="brandmark" id="landingLogo" style="margin-bottom:8px">05</div>
+  <div class="land-h">What is this device?</div>
+  <div class="land-sub">Pick a role to get started. You'll set up the other device after.</div>
+  <div class="land-cards">
+    <button class="land-card" id="chooseSend">
+      <div class="lc-ico">📷</div>
+      <div class="lc-title">This is the camera</div>
+      <div class="lc-text">Send this device's video to a computer. Installs as an app.</div>
+    </button>
+    <button class="land-card" id="chooseReceive">
+      <div class="lc-ico">🖥️</div>
+      <div class="lc-title">Watch on this device</div>
+      <div class="lc-text">Receive a phone's camera here and show a QR to pair. For your OBS computer.</div>
+    </button>
+  </div>
+</div>
+
 <!-- ============ INSTALL GATE ============ -->
 <div id="gate" class="screen hidden">
   <div class="gate-card glass">
@@ -90,7 +109,11 @@
     <!-- 5 quick setup -->
     <section class="ob-step" data-step="4">
       <div class="ob-eyebrow">Quick setup</div>
-      <h2 class="ob-title">Default capture</h2>
+      <h2 class="ob-title">Name this camera</h2>
+      <div class="ob-field">
+        <label>Device name (shown on the computer)</label>
+        <input class="field-input" id="obDeviceName" placeholder="e.g. Noah's iPhone" />
+      </div>
       <div class="ob-field">
         <label>Camera</label>
         <div class="seg" id="obFacing"><button data-facing="environment" class="on">Back</button><button data-facing="user">Front</button></div>
@@ -194,24 +217,19 @@
     <div class="row"><span class="rk">Facing</span><span class="rv"><div class="seg" id="setFacing"><button data-facing="environment">Back</button><button data-facing="user">Front</button></div></span></div>
     <div class="row"><span class="rk">Mirror preview</span><span class="rv"><div class="toggle" id="setMirror"></div></span></div>
 
-    <div class="section-label">Stream &amp; OBS</div>
+    <div class="section-label">Connect to a computer</div>
     <div class="row" style="flex-direction:column;align-items:stretch;gap:8px">
-      <span class="rk">Pairing server (wss://…)</span>
-      <input class="field-input" id="pairServerUrl" placeholder="wss://your-host  (enables click + swipe pairing)" />
+      <button class="btn btn-primary btn-block" id="scanConnectBtn">Scan QR to connect</button>
       <span class="rk" style="margin-top:6px">This device's name</span>
       <input class="field-input" id="deviceNameInput" placeholder="e.g. Noah's iPhone" />
-      <button class="btn btn-ghost btn-block" id="savePairing">Save &amp; make discoverable</button>
-      <div class="ob-text" id="pairStatus" style="font-size:12.5px;margin-top:2px;color:var(--txt-faint)">Not connected to a pairing server.</div>
+      <button class="btn btn-ghost btn-block" id="saveDeviceName">Save name</button>
+      <div class="ob-text" id="pairStatus" style="font-size:12.5px;margin-top:2px;color:var(--txt-faint)">On your computer, open the receiver page — a QR code appears for you to scan. Nothing to install or run.</div>
     </div>
     <div class="section-label">Manual pairing (no server)</div>
-    <div class="row" style="flex-direction:column;align-items:stretch;gap:10px">
-      <span class="rk">OBS Browser Source URL</span>
-      <div class="url-copy"><input class="field-input" id="obsUrl" readonly /><button class="mini-btn" id="copyObs">Copy</button></div>
-      <span class="rk" style="margin-top:6px">Session ID</span>
-      <div class="url-copy"><input class="field-input" id="sessId" readonly /><button class="mini-btn" id="copySess">Copy</button></div>
+    <div class="row" style="flex-direction:column;align-items:stretch;gap:6px">
+      <button class="btn btn-ghost btn-block" id="manualPairBtn">Pair by pasting codes</button>
+      <div class="ob-text" style="font-size:12.5px;color:var(--txt-faint)">No server needed: generate an offer here and paste it into the receiver's manual screen, then paste its answer back.</div>
     </div>
-    <div class="row" style="flex-direction:column;align-items:stretch"><button class="btn btn-ghost btn-block" id="showQr">Show pairing QR code</button></div>
-    <div class="qr-wrap hidden" id="qrWrap"><div class="qr-box" id="qrBox"></div><div class="ob-text" style="font-size:12.5px;text-align:center">Scan on the OBS computer to open the viewer.</div></div>
 
     <div class="section-label">Scenes data</div>
     <div class="row" style="gap:8px"><button class="btn btn-ghost" id="exportScenes" style="flex:1">Export JSON</button><button class="btn btn-ghost" id="importScenes" style="flex:1">Import JSON</button></div>
@@ -237,20 +255,30 @@
 <input type="file" id="jsonPick" accept="application/json,.json" class="hidden" />
 <div class="toast" id="toast"></div>
 
-<!-- ============ INCOMING CONNECT REQUEST (slide to confirm) ============ -->
+<!-- ============ QR SCANNER (sender) ============ -->
+<div class="scanner" id="scanner">
+  <video id="scanVideo" autoplay playsinline muted></video>
+  <div class="scan-overlay">
+    <div class="scan-frame"><span></span><span></span><span></span><span></span></div>
+    <div class="scan-hint" id="scanHint">Point at the QR code on your computer</div>
+  </div>
+  <button class="scan-close" id="scanClose">Cancel</button>
+</div>
+
+<!-- ============ CONNECT CONFIRM (slide) ============ -->
 <div class="connect-sheet" id="connectSheet">
   <div class="cs-card glass">
     <div class="cs-ico">🖥️</div>
-    <div class="cs-name" id="csPcName">A computer</div>
-    <div class="cs-sub">would like to connect to your camera</div>
+    <div class="cs-name">Connect to <span id="csPcName">this computer</span>?</div>
+    <div class="cs-sub">This will let <b id="csPcName2">this computer</b> view your camera feed.</div>
     <div class="slider" id="csSlider">
       <div class="slider-fill" id="csFill"></div>
-      <div class="slider-label" id="csLabel">Slide to connect</div>
+      <div class="slider-label" id="csLabel">Slide to continue</div>
       <div class="slider-knob" id="csKnob">
         <svg viewBox="0 0 24 24" width="22" fill="none" stroke="#04240f" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </div>
     </div>
-    <button class="cs-decline" id="csDecline">Decline</button>
+    <button class="cs-decline" id="csDecline">Cancel</button>
   </div>
 </div>
 
@@ -258,6 +286,8 @@
 <script src="qrcode.min.js"></script>
 <script src="gifler.min.js"></script>
 <script src="app.js"></script>
+<script src="jsqr.min.js"></script>
+<script src="peerjs.min.js"></script>
 <script src="pairing.js"></script>
 </body>
 </html>

@@ -188,6 +188,8 @@ function wireOnboarding() {
   $('#obMirror').onclick = () => { const t = $('#obMirror'); t.classList.toggle('on'); State.settings.mirror = t.classList.contains('on'); };
 
   $('#obFinish').onclick = async () => {
+    const nm = ($('#obDeviceName') && $('#obDeviceName').value || '').trim();
+    if (nm) State.deviceName = nm;
     State.onboardingCompleted = true; persist();
     $('#onboard').classList.add('hidden');
     await launchApp();
@@ -624,8 +626,6 @@ function syncSettingsUI() {
   $$('#setRes button').forEach(b => b.classList.toggle('on', b.dataset.res === State.settings.res));
   $$('#setFacing button').forEach(b => b.classList.toggle('on', b.dataset.facing === State.settings.facing));
   $('#setMirror').classList.toggle('on', State.settings.mirror);
-  $('#obsUrl').value = Stream.viewerUrl();
-  $('#sessId').value = State.sessionId;
   $('#logoMain').value = State.logos.logoImageURL;
   $('#logoSplash').value = State.logos.splashLogoImageURL;
   $('#logoOnboard').value = State.logos.onboardingLogoImageURL;
@@ -635,12 +635,7 @@ function wireSettings() {
   $$('#setFacing button').forEach(b => b.onclick = async () => { State.settings.facing = b.dataset.facing; syncSettingsUI(); persist(); await Camera.start(); });
   $('#setMirror').onclick = () => { State.settings.mirror = !State.settings.mirror; $('#setMirror').classList.toggle('on'); Camera.applyMirror(); persist(); };
 
-  $('#copyObs').onclick = () => { navigator.clipboard?.writeText($('#obsUrl').value); toast('OBS URL copied'); };
-  $('#copySess').onclick = () => { navigator.clipboard?.writeText($('#sessId').value); toast('Session ID copied'); };
-  $('#showQr').onclick = () => {
-    const w = $('#qrWrap'); w.classList.toggle('hidden');
-    if (!w.classList.contains('hidden')) renderQR($('#qrBox'), Stream.viewerUrl());
-  };
+  $('#manualPairBtn').onclick = () => onGoLive();
 
   $('#exportScenes').onclick = () => {
     const blob = new Blob([JSON.stringify({ scenes: State.scenes }, null, 2)], { type: 'application/json' });
@@ -703,8 +698,11 @@ function wireMain() {
   // selection toolbar
   $$('.sel-btn').forEach(b => b.onclick = () => Overlay.selAction(b.dataset.sel));
 
-  // go live → pairing flow
-  $('#goLive').onclick = onGoLive;
+  // go live → scan a QR to connect
+  $('#goLive').onclick = () => {
+    if (Stream.live) { if (typeof Pair !== 'undefined') Pair.stop(); else Stream.stop(); toast('Disconnected'); return; }
+    if (typeof Pair !== 'undefined') Pair.scan(); else onGoLive();
+  };
 
   wireSettings();
 }
@@ -767,7 +765,13 @@ async function boot() {
     $('#splash').style.opacity = '0';
     setTimeout(() => $('#splash').classList.add('hidden'), 500);
 
-    if (!isStandalone() && !DEV_BYPASS) { showGate(); return; }
+    const role = new URLSearchParams(location.search).get('role');
+    if (role === 'receiver') { location.replace('viewer.html'); return; }
+
+    // Installed app (or ?preview / ?role=sender) = the camera. A plain
+    // browser tab shows the send/receive chooser first.
+    const isSender = isStandalone() || DEV_BYPASS || role === 'sender';
+    if (!isSender) { showLanding(); return; }
 
     if (!State.onboardingCompleted) {
       $('#onboard').classList.remove('hidden'); showObStep(0);
@@ -775,5 +779,13 @@ async function boot() {
       await launchApp();
     }
   }, 1100);
+}
+
+/* send / receive chooser (browser tab only) */
+function showLanding() {
+  const el = $('#landing'); if (!el) return;
+  el.classList.remove('hidden');
+  $('#chooseSend').onclick = () => { el.classList.add('hidden'); showGate(); };
+  $('#chooseReceive').onclick = () => location.assign('viewer.html');
 }
 document.addEventListener('DOMContentLoaded', boot);
