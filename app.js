@@ -70,6 +70,8 @@ const State = {
   logos: { ...LOGO_DEFAULTS },
   sessionId: uid() + uid(),
   signalUrl: '',
+  pairServer: '',
+  deviceName: '',
   onboardingCompleted: false
 };
 
@@ -92,7 +94,7 @@ function persist() {
     Store.set('scenes', State.scenes);
     Store.set('state', {
       currentId: State.currentId, settings: State.settings, logos: State.logos,
-      sessionId: State.sessionId, signalUrl: State.signalUrl, onboardingCompleted: State.onboardingCompleted
+      sessionId: State.sessionId, signalUrl: State.signalUrl, pairServer: State.pairServer, deviceName: State.deviceName, onboardingCompleted: State.onboardingCompleted
     });
   }, 250);
 }
@@ -572,7 +574,8 @@ const Stream = (() => {
     if (State.signalUrl) u.searchParams.set('signal', State.signalUrl);
     return u.toString();
   }
-  return { onCameraReady, createOffer, acceptAnswer, connectWS, setLive, stop, viewerUrl, get live() { return live; } };
+  return { onCameraReady, createOffer, acceptAnswer, connectWS, setLive, stop, viewerUrl,
+    composite: startComposite, get live() { return live; } };
 })();
 
 /* ============================================================
@@ -746,6 +749,7 @@ async function launchApp() {
   renderScenes();
   syncSettingsUI();
   Stream.setLive(false);
+  if (typeof Pair !== 'undefined') Pair.init();
 }
 
 async function boot() {

@@ -195,6 +195,15 @@
     <div class="row"><span class="rk">Mirror preview</span><span class="rv"><div class="toggle" id="setMirror"></div></span></div>
 
     <div class="section-label">Stream &amp; OBS</div>
+    <div class="row" style="flex-direction:column;align-items:stretch;gap:8px">
+      <span class="rk">Pairing server (wss://…)</span>
+      <input class="field-input" id="pairServerUrl" placeholder="wss://your-host  (enables click + swipe pairing)" />
+      <span class="rk" style="margin-top:6px">This device's name</span>
+      <input class="field-input" id="deviceNameInput" placeholder="e.g. Noah's iPhone" />
+      <button class="btn btn-ghost btn-block" id="savePairing">Save &amp; make discoverable</button>
+      <div class="ob-text" id="pairStatus" style="font-size:12.5px;margin-top:2px;color:var(--txt-faint)">Not connected to a pairing server.</div>
+    </div>
+    <div class="section-label">Manual pairing (no server)</div>
     <div class="row" style="flex-direction:column;align-items:stretch;gap:10px">
       <span class="rk">OBS Browser Source URL</span>
       <div class="url-copy"><input class="field-input" id="obsUrl" readonly /><button class="mini-btn" id="copyObs">Copy</button></div>
@@ -228,9 +237,27 @@
 <input type="file" id="jsonPick" accept="application/json,.json" class="hidden" />
 <div class="toast" id="toast"></div>
 
+<!-- ============ INCOMING CONNECT REQUEST (slide to confirm) ============ -->
+<div class="connect-sheet" id="connectSheet">
+  <div class="cs-card glass">
+    <div class="cs-ico">🖥️</div>
+    <div class="cs-name" id="csPcName">A computer</div>
+    <div class="cs-sub">would like to connect to your camera</div>
+    <div class="slider" id="csSlider">
+      <div class="slider-fill" id="csFill"></div>
+      <div class="slider-label" id="csLabel">Slide to connect</div>
+      <div class="slider-knob" id="csKnob">
+        <svg viewBox="0 0 24 24" width="22" fill="none" stroke="#04240f" stroke-width="2.4"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+    </div>
+    <button class="cs-decline" id="csDecline">Decline</button>
+  </div>
+</div>
+
 <script src="konva.min.js"></script>
 <script src="qrcode.min.js"></script>
 <script src="gifler.min.js"></script>
 <script src="app.js"></script>
+<script src="pairing.js"></script>
 </body>
 </html>

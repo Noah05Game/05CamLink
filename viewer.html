@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>05CamLink — OBS Viewer</title>
+<title>05CamLink — Viewer</title>
 <style>
-  :root { --accent:#32d6ff; --rec:#ff453a; --bg:#000; }
+  :root { --accent:#32d6ff; --rec:#ff453a; --ok:#30d158; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; height:100%; background:var(--bg); overflow:hidden;
+  html,body { margin:0; height:100%; background:#000; overflow:hidden;
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif; color:#f5f7fa; }
   #v { position:fixed; inset:0; width:100%; height:100%; object-fit:contain; background:#000; }
   .badge { position:fixed; top:14px; left:14px; z-index:5; display:none; align-items:center; gap:8px;
@@ -17,47 +17,90 @@
   .badge .d { width:9px; height:9px; border-radius:50%; background:var(--rec);
     box-shadow:0 0 0 0 rgba(255,69,58,.6); animation:t 1.6s infinite; }
   @keyframes t { 70%{box-shadow:0 0 0 9px rgba(255,69,58,0);} 100%{box-shadow:0 0 0 0 rgba(255,69,58,0);} }
-  .panel { position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; gap:14px;
-    align-items:center; justify-content:center; padding:24px; text-align:center;
-    background:radial-gradient(120% 80% at 50% -10%,#1a2336,#0b0e14 60%); }
+  .panel { position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; gap:16px;
+    align-items:center; justify-content:center; padding:26px; text-align:center;
+    background:radial-gradient(120% 80% at 50% -10%,#1a2336,#0b0e14 60%); overflow:auto; }
   .panel.hidden { display:none; }
   .mark { width:64px; height:64px; border-radius:18px; display:grid; place-items:center; font-weight:800;
     font-size:24px; letter-spacing:-.04em; background:linear-gradient(160deg,#1a2336,#0d1119);
     border:1px solid rgba(255,255,255,.1); }
-  h1 { font-size:21px; font-weight:720; letter-spacing:-.02em; margin:6px 0 0; }
-  p { color:rgba(245,247,250,.6); font-size:14px; max-width:380px; line-height:1.5; margin:0; }
-  textarea { width:min(420px,90vw); height:80px; border-radius:12px; padding:11px; font-size:11px;
-    font-family:ui-monospace,Menlo,monospace; color:#f5f7fa; background:rgba(255,255,255,.06);
-    border:1px solid rgba(255,255,255,.12); resize:vertical; }
-  textarea:focus { outline:none; border-color:var(--accent); }
+  h1 { font-size:22px; font-weight:740; letter-spacing:-.025em; margin:6px 0 0; }
+  p { color:rgba(245,247,250,.6); font-size:14px; max-width:420px; line-height:1.5; margin:0; }
+  .card { width:min(440px,92vw); display:flex; flex-direction:column; gap:10px; }
+  input { width:100%; border-radius:12px; padding:12px 14px; font-size:14px; color:#f5f7fa;
+    background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); }
+  input:focus { outline:none; border-color:var(--accent); }
   .btn { padding:12px 18px; border-radius:14px; font-size:15px; font-weight:640; border:none; cursor:pointer;
     color:#04222c; background:var(--accent); }
   .btn.ghost { background:rgba(255,255,255,.08); color:#f5f7fa; border:1px solid rgba(255,255,255,.12); }
+  .devices { width:min(440px,92vw); display:flex; flex-direction:column; gap:8px; }
+  .device { display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:16px; cursor:pointer;
+    background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); text-align:left;
+    color:#f5f7fa; font-size:15px; font-weight:600; transition:background .18s,border-color .18s; }
+  .device:hover { background:rgba(50,214,255,.1); border-color:rgba(50,214,255,.4); }
+  .device .dico { width:38px; height:38px; border-radius:11px; display:grid; place-items:center; font-size:18px;
+    background:rgba(50,214,255,.12); border:1px solid rgba(50,214,255,.22); flex:none; }
+  .device .arr { margin-left:auto; opacity:.5; }
+  .empty { color:rgba(245,247,250,.4); font-size:13px; padding:10px; }
+  .status { font-size:13px; color:rgba(245,247,250,.55); min-height:18px; }
+  .spinner { width:34px; height:34px; border-radius:50%; border:3px solid rgba(255,255,255,.15);
+    border-top-color:var(--accent); animation:spin .9s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
   .row { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  .link { color:var(--accent); cursor:pointer; font-size:13px; text-decoration:underline; background:none; border:none; }
   .toggle-pair { position:fixed; bottom:14px; right:14px; z-index:6; width:42px; height:42px; border-radius:13px;
     display:grid; place-items:center; background:rgba(16,21,31,.7); border:1px solid rgba(255,255,255,.12);
     backdrop-filter:blur(14px); cursor:pointer; opacity:.5; }
   .toggle-pair:hover { opacity:1; }
-  .status { font-size:12px; color:rgba(245,247,250,.5); }
+  textarea { width:min(440px,92vw); height:74px; border-radius:12px; padding:11px; font-size:11px;
+    font-family:ui-monospace,Menlo,monospace; color:#f5f7fa; background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.12); resize:vertical; }
+  .hidden { display:none !important; }
 </style>
 </head>
 <body>
 <video id="v" autoplay playsinline></video>
-<div class="badge" id="badge"><span class="d"></span><span id="badgeTxt">Live</span></div>
+<div class="badge" id="badge"><span class="d"></span><span>Live</span></div>
 
 <div class="panel" id="panel">
   <div class="mark">05</div>
-  <h1>05CamLink Viewer</h1>
-  <p id="lead">Connect your phone's camera. Use the offer from the 05CamLink app and paste it below.</p>
 
-  <div id="manualUI" class="row" style="flex-direction:column;align-items:center">
-    <textarea id="offerIn" placeholder="Paste the OFFER from the phone app"></textarea>
-    <button class="btn" id="makeAnswer">Generate answer</button>
-    <textarea id="answerOut" placeholder="Your ANSWER appears here — copy it back into the phone" readonly></textarea>
-    <div class="row">
-      <button class="btn ghost" id="copyAnswer">Copy answer</button>
+  <!-- phone visitors get redirected to install -->
+  <div id="phoneView" class="card hidden">
+    <h1>Open 05CamLink on your phone</h1>
+    <p>This page is the <b>computer-side viewer</b>. On the phone you broadcast from, install the 05CamLink app instead.</p>
+    <a class="btn" href="index.html">Go to the app</a>
+  </div>
+
+  <!-- discovery (default) -->
+  <div id="discoverView" class="card">
+    <h1 id="dTitle">Connect a camera</h1>
+    <p id="dLead">Pick your phone below. It'll ask you to swipe to confirm.</p>
+
+    <div id="setup" class="card hidden">
+      <input id="pairUrl" placeholder="Pairing server  wss://…" />
+      <input id="pcName" placeholder="This computer's name (e.g. OBS PC)" />
+      <button class="btn" id="connectServer">Connect</button>
     </div>
-    <div class="status" id="status"></div>
+
+    <div id="deviceArea" class="hidden">
+      <div class="devices" id="devices"></div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <button class="link" id="editServer">Change pairing server</button>
+  </div>
+
+  <button class="link" id="useManual" style="margin-top:6px">Use manual pairing instead</button>
+
+  <!-- manual fallback -->
+  <div id="manualView" class="card hidden">
+    <h1>Manual pairing</h1>
+    <textarea id="offerIn" placeholder="Paste the OFFER from the phone"></textarea>
+    <button class="btn" id="makeAnswer">Generate answer</button>
+    <textarea id="answerOut" placeholder="ANSWER — copy this back into the phone" readonly></textarea>
+    <button class="btn ghost" id="copyAnswer">Copy answer</button>
+    <div class="status" id="mStatus"></div>
   </div>
 </div>
 
@@ -66,25 +109,30 @@
 <script>
 const $ = s => document.querySelector(s);
 const q = new URLSearchParams(location.search);
-const session = q.get('session') || '';
-const signal = q.get('signal') || '';
 const v = $('#v'), panel = $('#panel'), badge = $('#badge');
-let pc;
+let pc, ws, myId = 'pc-' + Math.random().toString(36).slice(2, 9), target = null;
 
+/* ---- phone redirect ---- */
+const isPhone = /android|iphone|ipod|iemobile/i.test(navigator.userAgent) ||
+  (window.matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 520);
+if (isPhone) {
+  $('#discoverView').classList.add('hidden');
+  $('#useManual').classList.add('hidden');
+  $('#phoneView').classList.remove('hidden');
+}
+
+/* ---- WebRTC (receiver) ---- */
 function newPC() {
   pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
   pc.ontrack = e => { v.srcObject = e.streams[0]; };
+  pc.onicecandidate = e => { if (e.candidate && target) sendWS({ t: 'ice', to: target, from: myId, candidate: e.candidate }); };
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === 'connected') goLive();
-    if (['disconnected','failed','closed'].includes(pc.connectionState)) { badge.classList.remove('on'); }
+    if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) badge.classList.remove('on');
   };
   return pc;
 }
-function goLive() {
-  panel.classList.add('hidden');
-  badge.classList.add('on');
-  v.play().catch(()=>{});
-}
+function goLive() { panel.classList.add('hidden'); badge.classList.add('on'); v.play().catch(() => {}); }
 function iceDone(p) {
   return new Promise(res => {
     if (p.iceGatheringState === 'complete') return res();
@@ -93,46 +141,85 @@ function iceDone(p) {
   });
 }
 
-/* ---------- manual signaling ---------- */
+/* ---- rendezvous server ---- */
+function sendWS(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+function pcName() { return $('#pcName').value.trim() || localStorage.getItem('cam_pcname') || 'A computer'; }
+function connectServer(url) {
+  if (!url) { showSetup(); return; }
+  localStorage.setItem('cam_pairurl', url);
+  localStorage.setItem('cam_pcname', $('#pcName').value.trim() || 'A computer');
+  $('#setup').classList.add('hidden');
+  $('#deviceArea').classList.remove('hidden');
+  setStatus('Connecting to the pairing server…');
+  try { ws = new WebSocket(url); } catch { setStatus('Invalid server URL.'); showSetup(); return; }
+  ws.onopen = () => { sendWS({ t: 'hello', role: 'pc', id: myId, name: pcName() }); setStatus(''); };
+  ws.onmessage = async ev => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.t === 'devices') renderDevices(m.list);
+    else if (m.t === 'response') onResponse(m);
+    else if (m.t === 'sdp' && pc) { await pc.setRemoteDescription(m.sdp);
+      const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+      sendWS({ t: 'sdp', to: target, from: myId, sdp: pc.localDescription }); }
+    else if (m.t === 'ice' && pc) { try { await pc.addIceCandidate(m.candidate); } catch {} }
+  };
+  ws.onerror = () => setStatus('Server unreachable. It must be served over wss:// (HTTPS).');
+  ws.onclose = () => setStatus('Disconnected from the pairing server.');
+}
+function renderDevices(list) {
+  const box = $('#devices');
+  if (!list || !list.length) { box.innerHTML = '<div class="empty">No phones online yet. Open the 05CamLink app on your phone with the same pairing server set.</div>'; return; }
+  box.innerHTML = '';
+  list.forEach(d => {
+    const b = document.createElement('button');
+    b.className = 'device';
+    b.innerHTML = `<span class="dico">📱</span><span>${d.name}</span><span class="arr">→</span>`;
+    b.onclick = () => requestConnect(d);
+    box.appendChild(b);
+  });
+}
+function requestConnect(d) {
+  target = d.id;
+  newPC();
+  sendWS({ t: 'request', to: d.id, from: myId, name: pcName() });
+  setStatus(`<span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px"></span> Waiting for “${d.name}” to confirm on the phone…`);
+}
+function onResponse(m) {
+  if (m.ok) setStatus('Confirmed — connecting…');
+  else { setStatus('The phone declined the request.'); if (pc) { pc.close(); pc = null; } target = null; }
+}
+function setStatus(html) { $('#status').innerHTML = html; }
+function showSetup() { $('#setup').classList.remove('hidden'); $('#deviceArea').classList.add('hidden'); }
+
+/* ---- manual fallback ---- */
 $('#makeAnswer').onclick = async () => {
   const raw = $('#offerIn').value.trim();
-  if (!raw) { $('#status').textContent = 'Paste the offer first.'; return; }
+  if (!raw) { $('#mStatus').textContent = 'Paste the offer first.'; return; }
   try {
-    newPC();
-    const offer = JSON.parse(atob(raw));
-    await pc.setRemoteDescription(offer);
-    const ans = await pc.createAnswer();
-    await pc.setLocalDescription(ans);
-    await iceDone(pc);
+    pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    pc.ontrack = e => { v.srcObject = e.streams[0]; };
+    pc.onconnectionstatechange = () => pc.connectionState === 'connected' && goLive();
+    await pc.setRemoteDescription(JSON.parse(atob(raw)));
+    const ans = await pc.createAnswer(); await pc.setLocalDescription(ans); await iceDone(pc);
     $('#answerOut').value = btoa(JSON.stringify(pc.localDescription));
-    $('#status').textContent = 'Answer ready — copy it back into the phone, then you go live.';
-  } catch (e) { $('#status').textContent = 'That offer could not be read. Re-copy it from the app.'; }
+    $('#mStatus').textContent = 'Answer ready — copy it back into the phone.';
+  } catch { $('#mStatus').textContent = 'That offer could not be read.'; }
 };
-$('#copyAnswer').onclick = () => { navigator.clipboard && navigator.clipboard.writeText($('#answerOut').value); $('#status').textContent = 'Answer copied.'; };
+$('#copyAnswer').onclick = () => { navigator.clipboard && navigator.clipboard.writeText($('#answerOut').value); $('#mStatus').textContent = 'Copied.'; };
 
-/* ---------- optional WS signaling (one-tap) ---------- */
-function startWS() {
-  $('#lead').textContent = 'Waiting for the phone over your local network…';
-  $('#manualUI').style.display = 'none';
-  const ws = new WebSocket(signal);
-  ws.onopen = () => ws.send(JSON.stringify({ type:'viewer-join', session }));
-  ws.onmessage = async ev => {
-    const m = JSON.parse(ev.data);
-    if (m.type === 'offer') {
-      newPC();
-      pc.onicecandidate = e => e.candidate && ws.send(JSON.stringify({ type:'ice', session, candidate:e.candidate }));
-      await pc.setRemoteDescription(m.sdp);
-      const ans = await pc.createAnswer();
-      await pc.setLocalDescription(ans);
-      ws.send(JSON.stringify({ type:'answer', session, sdp: pc.localDescription }));
-    }
-    if (m.type === 'ice' && pc) { try { await pc.addIceCandidate(m.candidate); } catch {} }
-  };
-  ws.onerror = () => { $('#lead').textContent = 'Signaling server unreachable — switch to manual pairing.'; $('#manualUI').style.display = 'flex'; };
-}
-
+/* ---- UI wiring ---- */
+$('#connectServer').onclick = () => connectServer($('#pairUrl').value.trim());
+$('#editServer').onclick = showSetup;
 $('#togglePair').onclick = () => panel.classList.toggle('hidden');
-if (signal) startWS();
+$('#useManual').onclick = () => { $('#discoverView').classList.add('hidden'); $('#manualView').classList.remove('hidden'); $('#useManual').classList.add('hidden'); };
+
+/* ---- boot ---- */
+(function init() {
+  if (isPhone) return;
+  const savedUrl = q.get('pair') || localStorage.getItem('cam_pairurl') || '';
+  $('#pairUrl').value = savedUrl;
+  $('#pcName').value = localStorage.getItem('cam_pcname') || '';
+  if (savedUrl) connectServer(savedUrl); else showSetup();
+})();
 </script>
 </body>
 </html>
