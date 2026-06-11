@@ -101,7 +101,22 @@ const isPhone = /android|iphone|ipod|iemobile/i.test(navigator.userAgent) ||
 if (isPhone) { $('#setupView').classList.add('hidden'); $('#phoneView').classList.remove('hidden'); }
 
 function show(id){ ['setupView','qrView','manualView','phoneView'].forEach(x => $('#'+x).classList.toggle('hidden', x !== id)); }
-function goLive(){ panel.classList.add('hidden'); badge.classList.add('on'); v.play().catch(()=>{}); }
+function goLive(){ ended = false; panel.classList.add('hidden'); badge.classList.add('on'); v.play().catch(()=>{}); }
+let ended = false;
+function endCall(){
+  if (ended) return; ended = true;
+  if (mc) { try { mc.close(); } catch {} mc = null; }
+  try { v.srcObject = null; } catch {}
+  badge.classList.remove('on');
+  panel.classList.remove('hidden');
+  if (peer && !peer.destroyed) {
+    show('qrView');
+    setStatus('🔌 Device disconnected — waiting for your phone again…');
+  } else {
+    show('setupView');
+  }
+  setTimeout(() => { ended = false; }, 800);
+}
 function setStatus(html){ $('#status').innerHTML = html; }
 function renderQR(text){ const qr = qrcode(0,'M'); qr.addData(text); qr.make(); $('#qrBox').innerHTML = qr.createImgTag(6,10); }
 
@@ -121,7 +136,18 @@ function start(){
     setStatus('<span class="spinner"></span> ' + ((call.metadata && call.metadata.name) || 'Phone') + ' connecting…');
     call.answer();                       // receive only, send nothing
     call.on('stream', s => { v.srcObject = s; goLive(); });
-    call.on('close', () => { badge.classList.remove('on'); });
+    call.on('close', () => endCall());
+    call.on('error', () => endCall());
+    // also watch the underlying connection dropping
+    const watch = (n) => {
+      if (call.peerConnection) {
+        call.peerConnection.addEventListener('connectionstatechange', () => {
+          const st = call.peerConnection.connectionState;
+          if (st === 'failed' || st === 'disconnected' || st === 'closed') endCall();
+        });
+      } else if (n < 40) setTimeout(() => watch(n + 1), 150);
+    };
+    watch(0);
   });
   peer.on('error', e => {
     const t = e && e.type;

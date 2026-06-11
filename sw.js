@@ -1,5 +1,5 @@
 /* 05CamLink service worker — offline-first, GitHub Pages subdirectory safe */
-const CACHE = '05camlink-v5';
+const CACHE = '05camlink-v6';
 
 /* relative paths resolve against the SW scope, so this works at /repo/ too */
 const SHELL = [

@@ -24,10 +24,15 @@ const Store = (() => {
   function open() {
     if (dbP) return dbP;
     dbP = new Promise((res, rej) => {
-      const r = indexedDB.open(DB, VER);
-      r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains(KV)) r.result.createObjectStore(KV); };
-      r.onsuccess = () => res(r.result);
-      r.onerror = () => rej(r.error);
+      let settled = false;
+      const finish = (fn, v) => { if (settled) return; settled = true; clearTimeout(to); fn(v); };
+      const to = setTimeout(() => finish(rej, new Error('idb-timeout')), 2000);
+      let r;
+      try { r = indexedDB.open(DB, VER); } catch (e) { finish(rej, e); return; }
+      r.onupgradeneeded = () => { try { if (!r.result.objectStoreNames.contains(KV)) r.result.createObjectStore(KV); } catch {} };
+      r.onsuccess = () => finish(res, r.result);
+      r.onerror = () => finish(rej, r.error);
+      r.onblocked = () => finish(rej, new Error('idb-blocked'));
     });
     return dbP;
   }
@@ -201,7 +206,10 @@ function wireOnboarding() {
    ============================================================ */
 const Camera = (() => {
   const video = $('#cam');
-  let stream = null;
+  let stream = null, track = null;
+  let zoomCaps = null;        // {min,max,step} when hardware zoom supported
+  let dz = 1;                 // digital zoom factor (used when no hardware zoom)
+  const MAX_DZ = 4;
   const dims = { '480': { w: 854, h: 480 }, '720': { w: 1280, h: 720 }, '1080': { w: 1920, h: 1080 } };
 
   async function start() {
@@ -214,18 +222,90 @@ const Camera = (() => {
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
+      track = stream.getVideoTracks()[0] || null;
       applyMirror();
+      detectZoom();
+      applyDigitalZoom();
+      if (track) { track.onended = () => recover('track ended'); track.onmute = () => recover('track muted'); }
       await video.play().catch(() => {});
       Stream.onCameraReady(stream);
+      startWatchdog();
       return true;
     } catch (e) {
       console.warn('getUserMedia failed', e);
       return false;
     }
   }
-  function stop() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } }
-  function applyMirror() { video.classList.toggle('mirror', !!State.settings.mirror); }
-  return { start, stop, applyMirror, get stream() { return stream; }, get video() { return video; } };
+  function stop() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; track = null; } }
+  function applyMirror() { video.classList.toggle('mirror', !!State.settings.mirror); applyDigitalZoom(); }
+
+  /* ---------- zoom ---------- */
+  function detectZoom() {
+    zoomCaps = null;
+    try {
+      const caps = track && track.getCapabilities && track.getCapabilities();
+      if (caps && 'zoom' in caps && caps.zoom && caps.zoom.max > caps.zoom.min) {
+        zoomCaps = { min: caps.zoom.min, max: caps.zoom.max, step: caps.zoom.step || 0.1 };
+        dz = 1; // hardware zoom resets digital
+      }
+    } catch {}
+  }
+  function applyDigitalZoom() {
+    if (zoomCaps) { video.style.transform = ''; return; }       // hardware handles it
+    video.style.transformOrigin = 'center center';
+    const m = State.settings.mirror ? -1 : 1;
+    video.style.transform = `scaleX(${m}) scale(${dz})`;        // preview crop
+  }
+  // value: 0..1 normalized zoom across the available range
+  function setZoomNorm(t) {
+    t = Math.max(0, Math.min(1, t));
+    if (zoomCaps) {
+      const z = zoomCaps.min + (zoomCaps.max - zoomCaps.min) * t;
+      try { track.applyConstraints({ advanced: [{ zoom: z }] }); } catch {}
+    } else {
+      dz = 1 + (MAX_DZ - 1) * t;
+      applyDigitalZoom();
+    }
+  }
+  function currentNorm() {
+    if (zoomCaps) {
+      try { const z = track.getSettings().zoom || zoomCaps.min; return (z - zoomCaps.min) / (zoomCaps.max - zoomCaps.min); } catch { return 0; }
+    }
+    return (dz - 1) / (MAX_DZ - 1);
+  }
+  function digitalFactor() { return zoomCaps ? 1 : dz; }        // composite uses this to crop
+
+  /* ---------- freeze watchdog ---------- */
+  let wdog = null, lastT = -1, sameCount = 0;
+  function startWatchdog() {
+    clearInterval(wdog); lastT = -1; sameCount = 0;
+    wdog = setInterval(() => {
+      if (document.hidden || !stream) return;
+      const t = video.currentTime;
+      if (video.paused) { video.play().catch(() => {}); return; }
+      if (t === lastT) {
+        sameCount++;
+        if (sameCount === 2) video.play().catch(() => {});       // gentle nudge first
+        if (sameCount >= 4) { sameCount = 0; recover('frozen'); } // then re-acquire
+      } else { sameCount = 0; }
+      lastT = t;
+    }, 1500);
+  }
+  let recovering = false;
+  async function recover(why) {
+    if (recovering) return; recovering = true;
+    console.warn('camera recover:', why);
+    const ok = await start();                                    // re-acquire; composite reads same <video>, so the stream heals
+    if (!ok) { try { await video.play(); } catch {} }
+    recovering = false;
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && stream) video.play().catch(() => {}); });
+  window.addEventListener('pageshow', () => { if (stream) video.play().catch(() => {}); });
+
+  return {
+    start, stop, applyMirror, setZoomNorm, currentNorm, digitalFactor,
+    get hasZoom() { return true; }, get stream() { return stream; }, get video() { return video; }
+  };
 })();
 
 /* ============================================================
@@ -475,7 +555,7 @@ const Overlay = (() => {
   }
 
   function getStageCanvas() { return stage.toCanvas ? stage : null; }
-  return { init, addText, addImageFromSrc, addGifFromSrc, loadScene, save, selAction, refreshLayers, get stage() { return stage; }, get layer() { return layer; } };
+  return { init, addText, addImageFromSrc, addGifFromSrc, loadScene, save, selAction, refreshLayers, hasSelection: () => !!selected, get stage() { return stage; }, get layer() { return layer; } };
 })();
 
 /* ============================================================
@@ -494,19 +574,33 @@ const Stream = (() => {
 
   function startComposite() {
     const c = compositeCanvas();
+    const v0 = Camera.video;
+    c.width = (v0 && v0.videoWidth) || 1280;
+    c.height = (v0 && v0.videoHeight) || 720;
     const draw = () => {
       const v = Camera.video, st = Overlay.stage;
       if (v && v.videoWidth) {
-        if (c.width !== v.videoWidth) { c.width = v.videoWidth; c.height = v.videoHeight; }
+        if (c.width !== v.videoWidth || c.height !== v.videoHeight) { c.width = v.videoWidth; c.height = v.videoHeight; }
+        const cw = c.width, ch = c.height;
+        const dz = (Camera.digitalFactor && Camera.digitalFactor()) || 1;
+        const sw = cw / dz, sh = ch / dz, sx = (cw - sw) / 2, sy = (ch - sh) / 2;
         cctx.save();
-        if (State.settings.mirror) { cctx.translate(c.width, 0); cctx.scale(-1, 1); }
-        cctx.drawImage(v, 0, 0, c.width, c.height);
+        if (State.settings.mirror) { cctx.translate(cw, 0); cctx.scale(-1, 1); }
+        cctx.drawImage(v, sx, sy, sw, sh, 0, 0, cw, ch);   // crop = digital zoom, native aspect
         cctx.restore();
-        if (st) { try { cctx.drawImage(st.toCanvas({ pixelRatio: c.width / st.width() }), 0, 0, c.width, c.height); } catch {} }
+        if (st) {
+          try {
+            const stW = st.width(), stH = st.height();
+            const scale = Math.max(cw / stW, ch / stH);     // cover-fit overlays (no stretch)
+            const scc = st.toCanvas({ pixelRatio: Math.min(2, scale) });
+            const dw = stW * scale, dh = stH * scale, dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+            cctx.drawImage(scc, dx, dy, dw, dh);
+          } catch {}
+        }
       }
       rafId = requestAnimationFrame(draw);
     };
-    cancelAnimationFrame(rafId); draw();
+    cancelAnimationFrame(rafId); draw();                    // fill canvas BEFORE capture
     compStream = c.captureStream(30);
     if (Camera.stream) Camera.stream.getAudioTracks().forEach(t => compStream.addTrack(t));
     return compStream;
@@ -739,8 +833,11 @@ async function onGoLive() {
    12. BOOT
    ============================================================ */
 async function launchApp() {
+  if (!State.scenes || !State.scenes.length) State.scenes = [newScene('Scene 1')];
+  if (!State.currentId || !curScene()) State.currentId = State.scenes[0].id;
   $('#app').classList.remove('hidden');
   Overlay.init();
+  setupCameraZoom();
   await Camera.start();
   $('#curSceneName').textContent = curScene().name;
   Overlay.loadScene(curScene());
@@ -750,20 +847,33 @@ async function launchApp() {
   if (typeof Pair !== 'undefined') Pair.init();
 }
 
+/* pinch-to-zoom the camera (only when no overlay is selected) */
+let _zoomWired = false;
+function setupCameraZoom() {
+  if (_zoomWired) return; _zoomWired = true;
+  const el = $('#stageWrap'); if (!el) return;
+  let active = false, startDist = 0, startNorm = 0;
+  const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  el.addEventListener('touchstart', e => {
+    if (e.touches.length === 2 && !(typeof Overlay !== 'undefined' && Overlay.hasSelection())) {
+      active = true; startDist = dist(e.touches[0], e.touches[1]); startNorm = Camera.currentNorm();
+    }
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (!active || e.touches.length !== 2) return;
+    const ratio = dist(e.touches[0], e.touches[1]) / startDist;
+    Camera.setZoomNorm(startNorm + (ratio - 1) * 0.9);
+  }, { passive: true });
+  const end = e => { if (active && e.touches.length < 2) active = false; };
+  el.addEventListener('touchend', end); el.addEventListener('touchcancel', end);
+}
+
 async function boot() {
-  await loadState();
-  applyLogos();
-  wireOnboarding();
-  wireMain();
-
-  // register service worker (relative path → works in /repo subdir)
-  if ('serviceWorker' in navigator) {
-    try { await navigator.serviceWorker.register('sw.js'); } catch (e) { console.warn('SW failed', e); }
-  }
-
-  setTimeout(async () => {
-    $('#splash').style.opacity = '0';
-    setTimeout(() => $('#splash').classList.add('hidden'), 500);
+  let done = false;
+  const proceed = async () => {
+    if (done) return; done = true;
+    const sp = $('#splash');
+    if (sp) { sp.style.opacity = '0'; setTimeout(() => sp.classList.add('hidden'), 500); }
 
     const role = new URLSearchParams(location.search).get('role');
     if (role === 'receiver') { location.replace('viewer.html'); return; }
@@ -776,9 +886,24 @@ async function boot() {
     if (!State.onboardingCompleted) {
       $('#onboard').classList.remove('hidden'); showObStep(0);
     } else {
-      await launchApp();
+      try { await launchApp(); }
+      catch (e) { console.error('launchApp failed', e); toast('Could not start the camera — check permissions'); }
     }
-  }, 1100);
+  };
+
+  // Failsafe: never let the splash hang, whatever happens above.
+  const failsafe = setTimeout(proceed, 5000);
+
+  try { await loadState(); } catch (e) { console.warn('loadState failed', e); }
+  try { applyLogos(); } catch (e) { console.warn(e); }
+  try { wireOnboarding(); } catch (e) { console.warn(e); }
+  try { wireMain(); } catch (e) { console.warn(e); }
+
+  if ('serviceWorker' in navigator) {
+    try { await navigator.serviceWorker.register('sw.js'); } catch (e) { console.warn('SW failed', e); }
+  }
+
+  setTimeout(() => { clearTimeout(failsafe); proceed(); }, 1100);
 }
 
 /* send / receive chooser (browser tab only) */

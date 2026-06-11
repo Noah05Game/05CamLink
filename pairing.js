@@ -41,6 +41,14 @@ const Pair = (() => {
   }
   function stopScan() { cancelAnimationFrame(scanRAF); scanRAF = null; $('#scanner').classList.remove('on'); }
 
+  async function flipScanCam() {
+    State.settings.facing = State.settings.facing === 'environment' ? 'user' : 'environment';
+    persist();
+    await Camera.start();
+    const vid = $('#scanVideo');
+    if (Camera.video && Camera.video.srcObject) { vid.srcObject = Camera.video.srcObject; vid.play().catch(() => {}); }
+  }
+
   function onScanned(text) {
     let p = null;
     try { p = JSON.parse(text); } catch {}
@@ -160,6 +168,7 @@ const Pair = (() => {
     wireSlider(); wireSettings();
     const dec = $('#csDecline'); if (dec) dec.onclick = cancel;
     const sx = $('#scanClose'); if (sx) sx.onclick = stopScan;
+    const sf = $('#scanFlip'); if (sf) sf.onclick = flipScanCam;
   }
 
   return { init, scan, stop };
